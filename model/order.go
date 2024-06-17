@@ -6,7 +6,7 @@ import (
 	"github.com/google/uuid"
 )
 
-type order struct {
+type Order struct {
 	OrderId     uint64     `json:"order_id"`
 	CustemerId  uuid.UUID  `json:"customer_id"`
 	LineItems   []LineItem `json:"line_items"`
