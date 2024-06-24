@@ -6,35 +6,37 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/redis/go-redis/v9"
+	"github.com/go-redis/redis"
 )
- 
+
 type App struct {
 	router http.Handler
-	rdb redis.Client
+	rdb    redis.Client
 }
 
 func New() *App {
-	app := &App {
-		router: loadRoutes(),
+	app := &App{
 		rdb: *redis.NewClient(&redis.Options{}),
 	}
+
+	app.loadRoutes()
+
 	return app
 }
 
 func (a *App) Start(ctx context.Context) error {
 	server := &http.Server{
-		Addr: ":3000",
+		Addr:    ":3000",
 		Handler: a.router,
 	}
 
-	err := a.rdb.Ping(ctx).Err()
+	err := a.rdb.Ping().Err()
 
-	if(err != nil) {
+	if err != nil {
 		return fmt.Errorf("failed to connect to redis: %w", err)
 	}
 
-	defer func()  {
+	defer func() {
 		if err := a.rdb.Close(); err != nil {
 			fmt.Println("failed to close redis: %w", err)
 		}
@@ -46,7 +48,7 @@ func (a *App) Start(ctx context.Context) error {
 
 	go func() {
 		err = server.ListenAndServe()
-		if(err != nil) {
+		if err != nil {
 			ch <- fmt.Errorf("failed to start server: %w", err)
 		}
 		close(ch)
@@ -56,7 +58,7 @@ func (a *App) Start(ctx context.Context) error {
 	case err = <-ch:
 		return err
 	case <-ctx.Done():
-		timeout, cancel := context.WithTimeout(context.Background(), time.Second * 10)
+		timeout, cancel := context.WithTimeout(context.Background(), time.Second*10)
 		defer cancel()
 
 		return server.Shutdown(timeout)
