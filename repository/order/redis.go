@@ -98,7 +98,10 @@ func (r *RedisRepo) DeleteById(id uint64) error {
 		txn.Discard()
 		return fmt.Errorf("failed To Remove from orders Set %w", err)
 	}
-
+	_, err = txn.Exec()
+	if err != nil {
+		return fmt.Errorf("failed to execute transaction: %w", err)
+	}
 	return nil
 }
 
@@ -148,7 +151,7 @@ func (r *RedisRepo) FindAll(page FindAllPage) (FindResult, error) {
 	}
 
 	xs, err := r.Client.MGet(keys...).Result()
-	if err != nil {
+	if err != nil || xs == nil || len(xs) == 0 {
 		return FindResult{}, fmt.Errorf("failed to get orders: %w", err)
 	}
 

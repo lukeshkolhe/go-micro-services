@@ -2,7 +2,9 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/go-chi/chi"
 	"math/rand"
 	"micro-service/model"
 	"micro-service/repository/order"
@@ -113,14 +115,142 @@ func (h *Order) List(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func (order *Order) GetById(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Get Order by Id")
+func (h *Order) GetById(w http.ResponseWriter, r *http.Request) {
+	idParam, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		fmt.Println("failed to parse id:", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	res, err := h.Repo.FindById(uint64(idParam))
+	if errors.Is(err, order.ErrorNotExists) {
+		fmt.Println("order does not exist", err)
+		w.WriteHeader(http.StatusNotFound)
+		return
+	} else if err != nil {
+		fmt.Println("failed to get order:", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	data, err := json.Marshal(res)
+	if err != nil {
+		fmt.Println("failed to marshal:", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	_, err = w.Write(data)
+	if err != nil {
+		fmt.Println("failed to marshal:", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	return
 }
 
-func (order *Order) UpdateById(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Update Order By Id")
+func (h *Order) UpdateById(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		fmt.Println("failed to parse request body:", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	idParam, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		fmt.Println("failed to parse order id", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	o, err := h.Repo.FindById(uint64(idParam))
+	if errors.Is(err, order.ErrorNotExists) {
+		fmt.Println("order does not exist", err)
+		w.WriteHeader(http.StatusNotFound)
+		return
+	} else if err != nil {
+		fmt.Println("failed to find order", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	const completedStatus = "completed"
+	const shippedStatus = "shipped"
+	now := time.Now().UTC()
+
+	switch body.Status {
+	case shippedStatus:
+		if o.ShippedAt != nil {
+			fmt.Println("Order is already shipped:", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		o.OrderStatus = shippedStatus
+		o.ShippedAt = &now
+
+	case completedStatus:
+		if o.CompletedAt != nil {
+			fmt.Println("Order is already completed:", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		} else if o.ShippedAt == nil {
+			fmt.Println("Order is not yet shipped:", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		o.OrderStatus = completedStatus
+		o.CompletedAt = &now
+
+	default:
+		fmt.Println("incorrect status:", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	err = h.Repo.Update(o)
+	if err != nil {
+		fmt.Println("failed to update:", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	data, err := json.Marshal(o)
+	if err != nil {
+		fmt.Println("failed to marshal:", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	_, err = w.Write(data)
+	if err != nil {
+		fmt.Println("failed to write:", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
-func (order *Order) DeleteById(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Update Order By Id")
+func (h *Order) DeleteById(w http.ResponseWriter, r *http.Request) {
+	idParam, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		fmt.Println("failed to parse id:", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	err = h.Repo.DeleteById(idParam)
+	if err != nil {
+		fmt.Println("failed to delete order:", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
